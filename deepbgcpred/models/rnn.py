@@ -309,8 +309,6 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
             custom_batch_size=1,
         )
 
-        #print(train_model.summary())
-
         X_train, y_train = X_list, y_list
         validation_data, validation_num_batches = None, None
 
@@ -350,9 +348,6 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
                     validation_X_list, validation_y_list, self.batch_size
                 )
                 validation_num_batches = None
-
-            print("**************** Leave class out ****************")
-            #print(validation_data)
 
 
         elif validation_size:
@@ -451,14 +446,6 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
 
         trained_weights = train_model.get_weights()
         self.model.set_weights(trained_weights)
-
-
-        import pickle
-
-        file1 = open("/data1/Project/Deep-BGCpred/leave_class_out_results/RiPP_deepbgc", "wb")
-        pickle.dump(history.history, file1)
-        file1.close()
-
 
         return history
 
