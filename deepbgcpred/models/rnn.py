@@ -11,7 +11,6 @@ from __future__ import (
 
 import logging
 
-import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.base import BaseEstimator, ClassifierMixin
 import pandas as pd
@@ -106,9 +105,11 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
                 )
             )
 
+            """
             model.add(
                 LSTM(self.hidden_size, return_sequences=True, stateful=self.stateful)
             )
+            """
 
             model.add(TimeDistributed(Dense(1, activation="sigmoid")))
         else:
@@ -308,10 +309,14 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
             custom_batch_size=1,
         )
 
-        # print(train_model.summary())
+        #print(train_model.summary())
 
         X_train, y_train = X_list, y_list
         validation_data, validation_num_batches = None, None
+
+        from pandas.core.frame import DataFrame
+
+        x_vali = DataFrame()
 
         if validation_X_list:
             if positive_weight:
@@ -331,14 +336,25 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
                 len(validation_X_list),
             )
             if shuffle:
-                logging.warning("New in DeepBGC 0.1.17: Shuffling validation samples!")
+                logging.warning("Shuffling validation samples!")
                 validation_X_list, validation_y_list = _shuffle_lists(
                     validation_X_list, validation_y_list
                 )
-            validation_data = _repeat_all_to_fill_batch_size(
-                validation_X_list, validation_y_list, self.batch_size
-            )
-            validation_num_batches = None
+            if len(input_size) != 1:
+                validation_data = _repeat_all_to_fill_batch_size_three(
+                    validation_X_list, validation_y_list, self.batch_size, input_size
+                )
+                validation_num_batches = None
+            else:
+                validation_data = _repeat_all_to_fill_batch_size(
+                    validation_X_list, validation_y_list, self.batch_size
+                )
+                validation_num_batches = None
+
+            print("**************** Leave class out ****************")
+            #print(validation_data)
+
+
         elif validation_size:
             logging.info("Validating on {:.1f}% of input set", validation_size * 100)
             X_train, X_validation, y_train, y_validation = train_test_split(
@@ -436,6 +452,14 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
         trained_weights = train_model.get_weights()
         self.model.set_weights(trained_weights)
 
+
+        import pickle
+
+        file1 = open("/data1/Project/Deep-BGCpred/leave_class_out_results/RiPP_deepbgc", "wb")
+        pickle.dump(history.history, file1)
+        file1.close()
+
+
         return history
 
     def predict(
@@ -469,8 +493,10 @@ class KerasRNN(BaseEstimator, ClassifierMixin):
             if len(input_size) == 1:
                 # For DeepBGC model
                 batch_matrix = X.values.reshape(1, X.shape[0], X.shape[1])
+
             else:
                 # For Deep-BGCpred model without sliding window strategy.
+
                 X_arr1 = X.iloc[:, 0 : input_size[0]]
                 X_arr2 = X.iloc[:, input_size[0] : input_size[0] + input_size[1]]
                 X_arr3 = X.iloc[
@@ -686,6 +712,44 @@ def _repeat_all_to_fill_batch_size(X_sequences, y_sequences, batch_size):
     for i in range(0, batch_size):
         X_filled[i] = X_concat
         y_filled[i][:, 0] = y_concat
+
+    logging.info("Filling done")
+    return X_filled, y_filled
+
+
+def _repeat_all_to_fill_batch_size_three(X_sequences, y_sequences, batch_size, input_size):
+    """
+    Merge the sequences and repeat batch_size times to fill a matrix with (batch_size, total_sequences_rows, input_size) shape.
+    :param X_sequences: list of DataFrames (sequences)
+    :param y_sequences: list of Series of output sequence values
+    :param batch_size: how many rows to create
+    :return: Filled matrix of batch_size rows with samples from X_list in a way that all samples are (approximately) evenly present.
+    """
+
+    X_concat = pd.concat(X_sequences)
+    X_concat_d1 = X_concat.iloc[:, 0: input_size[0]]
+    X_concat_d2 = X_concat.iloc[:, input_size[0]: input_size[0] + input_size[1]]
+    X_concat_d3 = X_concat.iloc[:, input_size[0] + input_size[1]: input_size[0] + input_size[1] + input_size[2]]
+    y_concat = pd.concat(y_sequences)
+
+    fill_shape = (batch_size,) + X_concat.shape
+    fill_shape_d1 = (batch_size,) + X_concat_d1.shape
+    fill_shape_d2 = (batch_size,) + X_concat_d2.shape
+    fill_shape_d3 = (batch_size,) + X_concat_d3.shape
+
+
+    X_filled_d1 = np.zeros(shape=fill_shape_d1)
+    X_filled_d2 = np.zeros(shape=fill_shape_d2)
+    X_filled_d3 = np.zeros(shape=fill_shape_d3)
+    y_filled = np.zeros(shape=(fill_shape[0], fill_shape[1], 1))
+
+    for i in range(0, batch_size):
+        X_filled_d1[i] = X_concat_d1
+        X_filled_d2[i] = X_concat_d2
+        X_filled_d3[i] = X_concat_d3
+        y_filled[i][:, 0] = y_concat
+
+    X_filled = [X_filled_d1, X_filled_d2, X_filled_d3]
 
     logging.info("Filling done")
     return X_filled, y_filled
